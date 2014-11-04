@@ -10,7 +10,7 @@ import(
 
 type DocumentStorage interface {
 	load(int32) (string, error)
-	dump(int32, string) error
+	dump(int32, *string) error
 }
 
 type nullStorage struct {
@@ -20,7 +20,7 @@ func (n *nullStorage) load(id int32) (string, error) {
 	return "", nil
 }
 
-func (n *nullStorage) dump(id int32, str string) error {
+func (n *nullStorage) dump(id int32, str *string) error {
 	return nil
 }
 
@@ -53,6 +53,7 @@ type index struct {
 	stats *statistics
 	documents map[int]*document
 	wordInsertLock chan int
+	documentQueue chan *string
 }
 
 type Query interface {
@@ -124,8 +125,54 @@ func NewIndex(size int) *index {
 	index.documents = make(map[int]*document)
 	index.wordInsertLock = make(chan int, 1)
 	index.wordInsertLock <- 1
+	index.documentQueue = make(chan *string, 16)
+
+	for i := 0; i < 5; i++ {
+		go index.indexDocuments()
+	}
 
 	return index
+}
+
+func (i *index) indexDocuments() {
+	for {
+		content := <- i.documentQueue
+
+		id := i.nextId()
+
+		doc := new(document)
+		doc.id = id
+
+		Storage.dump(id, content)
+
+		tokens := tokenize(content)
+
+		missingWords := make([]string, len(tokens))
+		missingWordCount := 0
+
+		for _, word := range(tokens) {
+			if _, ok := i.words[word]; !ok {
+				missingWords[missingWordCount] = word
+				missingWordCount++
+			}
+		}
+
+		if missingWordCount > 0 {
+			<- i.wordInsertLock
+			fmt.Println("Missing word count: ", missingWordCount)
+			for _, word := range missingWords[:missingWordCount] {
+				i.words[word] = i.newWord(word)
+			}
+			i.wordInsertLock <- 1
+		}
+
+		for _, word := range(tokens) {
+			w := i.words[word]
+			w.addDocument(doc)
+		}
+
+		i.documents[int(id)] = doc
+	}
 }
 
 func (i *index) DocumentsByIds(bitArray *big.Int) []*document {
@@ -161,29 +208,7 @@ func (i *index) newWord(str string) *word {
 }
 
 func (i *index) AddDocument(content string) {
-	id := i.nextId()
-
-	doc := new(document)
-	doc.id = id
-
-	Storage.dump(id, content)
-
-	tokens := tokenize(content)
-	// <- i.wordInsertLock
-	for _, word := range(tokens) {
-		if _, ok := i.words[word]; !ok {
-			i.words[word] = i.newWord(word)
-		}
-	}
-
-	// i.wordInsertLock <- 1
-
-	for _, word := range(tokens) {
-		w := i.words[word]
-		w.addDocument(doc)
-	}
-
-	i.documents[int(id)] = doc
+	i.documentQueue <- &content
 }
 
 func (i *index) Stats() {
@@ -191,8 +216,8 @@ func (i *index) Stats() {
 	fmt.Println("Documents: ", i.lastId)
 }
 
-func tokenize(str string) []string {
-	str = strings.ToLower(str)
+func tokenize(content *string) []string {
+	str := strings.ToLower(*content)
 	rex := regexp.MustCompile("[[:word:]-_]+")
 
 	matches := rex.FindAllStringSubmatch(str, -1)
