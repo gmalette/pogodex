@@ -1,12 +1,12 @@
 package main
 
 import (
-	"pogodex/index"
 	"fmt"
+	"github.com/davecheney/profile"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-	"io/ioutil"
-	"github.com/davecheney/profile"
+	"pogodex/index"
 	"runtime"
 )
 
@@ -15,10 +15,10 @@ var id = index.NewIndex(max + 1)
 var count = 1
 
 func main() {
-runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(4)
 	cfg := profile.Config{
-		CPUProfile: true,
-		ProfilePath: ".",  // store profiles in current directory
+		CPUProfile:     true,
+		ProfilePath:    ".",  // store profiles in current directory
 		NoShutdownHook: true, // do not hook SIGINT
 	}
 
@@ -60,4 +60,3 @@ func withFile(path string, info os.FileInfo, err error) error {
 	indexDocument(path)
 	return nil
 }
-
