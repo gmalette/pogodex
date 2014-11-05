@@ -1,12 +1,12 @@
 package index
 
-import(
+import (
 	"fmt"
-	"strings"
 	"math/big"
 	"regexp"
-	"sync/atomic"
+	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type DocumentStorage interface {
@@ -28,11 +28,11 @@ func (n *nullStorage) dump(id int32, str *string) error {
 var Storage DocumentStorage = new(nullStorage)
 
 type word struct {
-	word string
+	word      string
 	documents *big.Int
 }
 
-func (w* word) addDocument(doc *document) {
+func (w *word) addDocument(doc *document) {
 	w.documents.SetBit(w.documents, int(doc.id), 1)
 }
 
@@ -48,14 +48,14 @@ type statistics struct {
 }
 
 type index struct {
-	lastId int32
+	lastId          int32
 	defaultWordSize int
-	words map[string]*word
-	stats *statistics
-	documents map[int]*document
-	wordInsertLock sync.Mutex
-	documentQueue chan *string
-	indexQueue sync.WaitGroup
+	words           map[string]*word
+	stats           *statistics
+	documents       map[int]*document
+	wordInsertLock  sync.Mutex
+	documentQueue   chan *string
+	indexQueue      sync.WaitGroup
 }
 
 type Query interface {
@@ -78,7 +78,7 @@ func (w *wordQuery) Ids(i *index) *big.Int {
 }
 
 type orQuery struct {
-	left Query
+	left  Query
 	right Query
 }
 
@@ -90,7 +90,7 @@ func (q *orQuery) Ids(i *index) *big.Int {
 
 type andQuery struct {
 	right Query
-	left Query
+	left  Query
 }
 
 func (q *andQuery) Ids(i *index) *big.Int {
@@ -105,7 +105,7 @@ type notQuery struct {
 
 func (q *notQuery) Ids(i *index) *big.Int {
 	ids := big.NewInt(0)
-	ids.SetBit(ids, len(i.documents) + 1, 1)
+	ids.SetBit(ids, len(i.documents)+1, 1)
 	ids.Sub(ids, big.NewInt(1))
 	ids.AndNot(ids, q.query.Ids(i))
 	return ids
@@ -136,7 +136,7 @@ func NewIndex(size int) *index {
 
 func (i *index) indexDocuments() {
 	for {
-		content := <- i.documentQueue
+		content := <-i.documentQueue
 
 		id := i.nextId()
 
@@ -150,7 +150,7 @@ func (i *index) indexDocuments() {
 		missingWords := make([]string, len(tokens))
 		missingWordCount := 0
 
-		for _, word := range(tokens) {
+		for _, word := range tokens {
 			if _, ok := i.words[word]; !ok {
 				missingWords[missingWordCount] = word
 				missingWordCount++
@@ -166,7 +166,7 @@ func (i *index) indexDocuments() {
 			i.wordInsertLock.Unlock()
 		}
 
-		for _, word := range(tokens) {
+		for _, word := range tokens {
 			w := i.words[word]
 			w.addDocument(doc)
 		}
@@ -181,13 +181,13 @@ func (i *index) DocumentsByIds(bitArray *big.Int) []*document {
 		return make([]*document, 0)
 	}
 
-	docs := make([]*document, 0, bitArray.BitLen() + 1)
+	docs := make([]*document, 0, bitArray.BitLen()+1)
 
 	for j := 0; j <= bitArray.BitLen(); j++ {
 		if bitArray.Bit(j) != 0 {
-			docs = docs[:len(docs) + 1]
+			docs = docs[:len(docs)+1]
 			doc := i.documents[j]
-			docs[len(docs) - 1] = doc
+			docs[len(docs)-1] = doc
 		}
 	}
 
@@ -234,10 +234,9 @@ func tokenize(content *string) []string {
 
 	tokens := make([]string, len(matches))
 
-	for index, token := range(matches) {
+	for index, token := range matches {
 		tokens[index] = token[0]
 	}
 
 	return tokens
 }
-
