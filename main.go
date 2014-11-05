@@ -1,11 +1,13 @@
 package main
 
 import (
-	"./index"
+	"pogodex/index"
 	"fmt"
 	"os"
 	"path/filepath"
 	"io/ioutil"
+	"github.com/davecheney/profile"
+	"runtime"
 )
 
 var max = 50000
@@ -13,6 +15,17 @@ var id = index.NewIndex(max + 1)
 var count = 1
 
 func main() {
+runtime.GOMAXPROCS(4)
+	cfg := profile.Config{
+		CPUProfile: true,
+		ProfilePath: ".",  // store profiles in current directory
+		NoShutdownHook: true, // do not hook SIGINT
+	}
+
+	// p.Stop() must be called before the program exits to
+	// ensure profiling information is written to disk.
+	p := profile.Start(&cfg)
+	defer p.Stop()
 	seed()
 }
 
@@ -33,6 +46,7 @@ func seed() {
 	filepath.Walk("./data/", withFile)
 	id.Stats()
 	q := index.BuildQuery("")
+	id.WaitForIndexing()
 	ids := q.Ids(id)
 	id.DocumentsByIds(ids)
 }

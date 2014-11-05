@@ -6,6 +6,7 @@ import(
 	"math/big"
 	"regexp"
 	"sync/atomic"
+	"sync"
 )
 
 type DocumentStorage interface {
@@ -52,8 +53,9 @@ type index struct {
 	words map[string]*word
 	stats *statistics
 	documents map[int]*document
-	wordInsertLock chan int
+	wordInsertLock sync.Mutex
 	documentQueue chan *string
+	indexQueue sync.WaitGroup
 }
 
 type Query interface {
@@ -123,8 +125,6 @@ func NewIndex(size int) *index {
 	index.lastId = 0
 	index.defaultWordSize = size
 	index.documents = make(map[int]*document)
-	index.wordInsertLock = make(chan int, 1)
-	index.wordInsertLock <- 1
 	index.documentQueue = make(chan *string, 16)
 
 	for i := 0; i < 5; i++ {
@@ -158,12 +158,12 @@ func (i *index) indexDocuments() {
 		}
 
 		if missingWordCount > 0 {
-			<- i.wordInsertLock
+			i.wordInsertLock.Lock()
 			fmt.Println("Missing word count: ", missingWordCount)
 			for _, word := range missingWords[:missingWordCount] {
 				i.words[word] = i.newWord(word)
 			}
-			i.wordInsertLock <- 1
+			i.wordInsertLock.Unlock()
 		}
 
 		for _, word := range(tokens) {
@@ -172,6 +172,7 @@ func (i *index) indexDocuments() {
 		}
 
 		i.documents[int(id)] = doc
+		i.indexQueue.Done()
 	}
 }
 
@@ -208,12 +209,17 @@ func (i *index) newWord(str string) *word {
 }
 
 func (i *index) AddDocument(content string) {
+	i.indexQueue.Add(1)
 	i.documentQueue <- &content
 }
 
 func (i *index) Stats() {
 	fmt.Println("Words: ", len(i.words))
 	fmt.Println("Documents: ", i.lastId)
+}
+
+func (i *index) WaitForIndexing() {
+	i.indexQueue.Wait()
 }
 
 func tokenize(content *string) []string {
