@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"github.com/quipo/statsd"
+	"time"
 )
 
 type DocumentStorage interface {
@@ -56,6 +58,7 @@ type index struct {
 	wordInsertLock  sync.Mutex
 	documentQueue   chan *string
 	indexQueue      sync.WaitGroup
+	statsdClient    *statsd.StatsdClient
 }
 
 type Query interface {
@@ -127,6 +130,13 @@ func NewIndex(size int) *index {
 	index.documents = make(map[int]*document)
 	index.documentQueue = make(chan *string, 16)
 
+	statsdClient := statsd.NewStatsdClient("localhost:8125", "pogodex.")
+	statsdClient.CreateSocket()
+	index.statsdClient = statsdClient
+
+	var lastId int64 = int64(index.lastId) + 0
+	index.statsdClient.Gauge("document_count", lastId)
+
 	for i := 0; i < 5; i++ {
 		go index.indexDocuments()
 	}
@@ -135,6 +145,11 @@ func NewIndex(size int) *index {
 }
 
 func (i *index) indexDocuments() {
+	before := time.Now()
+	defer func() {
+		i.statsdClient.Timing("index_time", int64(time.Since(before)))
+	}()
+
 	for {
 		content := <-i.documentQueue
 
@@ -157,6 +172,8 @@ func (i *index) indexDocuments() {
 			}
 		}
 
+		i.statsdClient.Incr("missing_words", int64(missingWordCount))
+
 		if missingWordCount > 0 {
 			i.wordInsertLock.Lock()
 			fmt.Println("Missing word count: ", missingWordCount)
@@ -173,6 +190,9 @@ func (i *index) indexDocuments() {
 
 		i.documents[int(id)] = doc
 		i.indexQueue.Done()
+
+		var lastId int64 = int64(i.lastId) + 0
+		i.statsdClient.Gauge("document_count", lastId)
 	}
 }
 
