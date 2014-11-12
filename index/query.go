@@ -1,16 +1,20 @@
 package index
 
+import (
+	"math/big"
+)
+
 type Query interface {
-	Ids(*index) *big.Int
+	Ids(WordMap) *big.Int
 }
 
 type wordQuery struct {
 	word string
 }
 
-func (w *wordQuery) Ids(i *index) *big.Int {
+func (w *wordQuery) Ids(m WordMap) *big.Int {
 	ids := big.NewInt(0)
-	word, ok := i.words[w.word]
+	word, ok := m.Get(w.word)
 
 	if !ok {
 		return ids
@@ -24,9 +28,9 @@ type orQuery struct {
 	right Query
 }
 
-func (q *orQuery) Ids(i *index) *big.Int {
+func (q *orQuery) Ids(m WordMap) *big.Int {
 	ids := big.NewInt(0)
-	ids.Or(q.left.Ids(i), q.right.Ids(i))
+	ids.Or(q.left.Ids(m), q.right.Ids(m))
 	return ids
 }
 
@@ -35,9 +39,9 @@ type andQuery struct {
 	left  Query
 }
 
-func (q *andQuery) Ids(i *index) *big.Int {
+func (q *andQuery) Ids(m WordMap) *big.Int {
 	ids := big.NewInt(0)
-	ids.And(q.left.Ids(i), q.right.Ids(i))
+	ids.And(q.left.Ids(m), q.right.Ids(m))
 	return ids
 }
 
@@ -45,10 +49,10 @@ type notQuery struct {
 	query Query
 }
 
-func (q *notQuery) Ids(i *index) *big.Int {
+func (q *notQuery) Ids(m WordMap) *big.Int {
 	ids := big.NewInt(0)
-	ids.SetBit(ids, len(i.documents)+1, 1)
+	ids.SetBit(ids, int(m.Len()) + 1, 1)
 	ids.Sub(ids, big.NewInt(1))
-	ids.AndNot(ids, q.query.Ids(i))
+	ids.AndNot(ids, q.query.Ids(m))
 	return ids
 }
