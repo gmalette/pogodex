@@ -11,7 +11,7 @@ import (
 )
 
 var max = 50000
-var id = index.NewIndex(max + 1)
+var id = index.NewIndex()
 var count = 1
 
 func main() {
@@ -47,7 +47,7 @@ func seed() {
 	id.Stats()
 	q := index.BuildQuery("")
 	id.WaitForIndexing()
-	ids := q.Ids(id)
+	ids := id.Query(q)
 	id.DocumentsByIds(ids)
 }
 

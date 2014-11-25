@@ -6,9 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"github.com/quipo/statsd"
-	"time"
 )
 
 type DocumentStorage interface {
@@ -17,6 +15,35 @@ type DocumentStorage interface {
 }
 
 type nullStorage struct {
+}
+
+type WordMap interface {
+	Get(string) (*word, bool)
+	Add(*word)
+	Len() uint
+}
+
+type wordHashMap struct {
+	dict map[string]*word
+}
+
+func NewWordHashMap() *wordHashMap {
+	m := new(wordHashMap)
+	m.dict = make(map[string]*word)
+	return m
+}
+
+func (w *wordHashMap) Len() uint {
+	return uint(len(w.dict))
+}
+
+func (w *wordHashMap) Add(word *word) {
+	w.dict[word.word] = word
+}
+
+func (w *wordHashMap) Get(key string) (*word, bool) {
+	word, ok := w.dict[key]
+	return word, ok
 }
 
 func (n *nullStorage) load(id int32) (string, error) {
@@ -49,15 +76,20 @@ func NewDocument(id int32) *document {
 type statistics struct {
 }
 
+type documentContent struct {
+	tokens *[]string
+	content *string
+}
+
 type index struct {
-	lastId          int32
-	defaultWordSize int
-	words           map[string]*word
+	nextId          int32
+	words           WordMap
 	stats           *statistics
 	documents       map[int]*document
 	wordInsertLock  sync.Mutex
-	documentQueue   chan *string
-	indexQueue      sync.WaitGroup
+	tokenizeQueue   chan *string
+	indexQueue      chan *documentContent
+	indexWait       sync.WaitGroup
 	statsdClient    *statsd.StatsdClient
 }
 
@@ -68,78 +100,67 @@ func BuildQuery(query string) Query {
 	return aq
 }
 
-func NewIndex(size int) *index {
+func NewIndex() *index {
 	index := new(index)
-	index.words = make(map[string]*word)
+	index.words = NewWordHashMap()
 	index.stats = new(statistics)
-	index.lastId = 0
-	index.defaultWordSize = size
+	index.nextId = 0
 	index.documents = make(map[int]*document)
-	index.documentQueue = make(chan *string, 16)
+	index.tokenizeQueue = make(chan *string, 16)
+	index.indexQueue = make(chan *documentContent, 16)
 
 	statsdClient := statsd.NewStatsdClient("localhost:8125", "pogodex.")
 	statsdClient.CreateSocket()
 	index.statsdClient = statsdClient
 
-	var lastId int64 = int64(index.lastId) + 0
-	index.statsdClient.Gauge("document_count", lastId)
+	index.statsdClient.Gauge("document_count", 1)
 
 	for i := 0; i < 5; i++ {
-		go index.indexDocuments()
+		go index.tokenizeDocuments()
 	}
+
+	go index.indexDocuments()
 
 	return index
 }
 
+func (i *index) Query(q Query) *big.Int {
+	return big.NewInt(0)
+}
+
 func (i *index) indexDocuments() {
-	before := time.Now()
-	defer func() {
-		i.statsdClient.Timing("index_time", int64(time.Since(before)))
-	}()
-
 	for {
-		content := <-i.documentQueue
+		docContent := <-i.indexQueue
 
-		id := i.nextId()
+		id := i.nextId
+		i.nextId++
 
 		doc := new(document)
 		doc.id = id
 
-		Storage.dump(id, content)
+		Storage.dump(id, docContent.content)
 
-		tokens := tokenize(content)
+		tokens := *docContent.tokens
 
-		missingWords := make([]string, len(tokens))
-		missingWordCount := 0
-
-		for _, word := range tokens {
-			if _, ok := i.words[word]; !ok {
-				missingWords[missingWordCount] = word
-				missingWordCount++
+		for _, token := range tokens {
+			word, ok := i.words.Get(token);
+			if !ok {
+				word = i.newWord(token)
+				i.words.Add(word)
 			}
-		}
-
-		i.statsdClient.Incr("missing_words", int64(missingWordCount))
-
-		if missingWordCount > 0 {
-			i.wordInsertLock.Lock()
-			fmt.Println("Missing word count: ", missingWordCount)
-			for _, word := range missingWords[:missingWordCount] {
-				i.words[word] = i.newWord(word)
-			}
-			i.wordInsertLock.Unlock()
-		}
-
-		for _, word := range tokens {
-			w := i.words[word]
-			w.addDocument(doc)
+			word.addDocument(doc)
 		}
 
 		i.documents[int(id)] = doc
-		i.indexQueue.Done()
+		i.indexWait.Done()
+	}
+}
 
-		var lastId int64 = int64(i.lastId) + 0
-		i.statsdClient.Gauge("document_count", lastId)
+func (i *index) tokenizeDocuments() {
+	for {
+		content := <-i.tokenizeQueue
+		tokens := tokenize(content)
+		i.indexQueue <- &documentContent{&tokens, content}
 	}
 }
 
@@ -163,10 +184,6 @@ func (i *index) DocumentsByIds(bitArray *big.Int) []*document {
 	return docs
 }
 
-func (i *index) nextId() int32 {
-	return atomic.AddInt32(&i.lastId, 1)
-}
-
 func (i *index) newWord(str string) *word {
 	documents := big.NewInt(0)
 	w := new(word)
@@ -176,17 +193,36 @@ func (i *index) newWord(str string) *word {
 }
 
 func (i *index) AddDocument(content string) {
-	i.indexQueue.Add(1)
-	i.documentQueue <- &content
+	i.indexWait.Add(1)
+	i.tokenizeQueue <- &content
 }
 
 func (i *index) Stats() {
-	fmt.Println("Words: ", len(i.words))
-	fmt.Println("Documents: ", i.lastId)
+	fmt.Println("Words: ", i.words.Len())
+	fmt.Println("Documents: ", i.nextId)
 }
 
 func (i *index) WaitForIndexing() {
-	i.indexQueue.Wait()
+	i.indexWait.Wait()
+}
+
+func uniqueWords(words *[]string) []string {
+	length := len(*words) - 1
+	unique := make([]string, len(*words))
+	copy(unique, *words)
+
+	for i := 0; i < length; i++ {
+		for j := i + 1; j <= length; j++ {
+			if unique[i] == unique[j] {
+				unique[j] = unique[length]
+				length--
+				unique = unique[0:length]
+				j--
+			}
+		}
+	}
+
+	return unique
 }
 
 func tokenize(content *string) []string {
