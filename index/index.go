@@ -66,17 +66,15 @@ func (w *word) addDocument(doc *document) {
 }
 
 type document struct {
+	externalId string
 	id int32
-}
-
-func NewDocument(id int32) *document {
-	return &document{id}
 }
 
 type statistics struct {
 }
 
 type documentContent struct {
+	externalId string
 	tokens *[]string
 	content *string
 }
@@ -87,7 +85,7 @@ type index struct {
 	stats           *statistics
 	documents       map[int]*document
 	wordInsertLock  sync.Mutex
-	tokenizeQueue   chan *string
+	tokenizeQueue   chan *documentContent
 	indexQueue      chan *documentContent
 	indexWait       sync.WaitGroup
 	statsdClient    *statsd.StatsdClient
@@ -106,7 +104,7 @@ func NewIndex() *index {
 	index.stats = new(statistics)
 	index.nextId = 0
 	index.documents = make(map[int]*document)
-	index.tokenizeQueue = make(chan *string, 16)
+	index.tokenizeQueue = make(chan *documentContent, 16)
 	index.indexQueue = make(chan *documentContent, 16)
 
 	statsdClient := statsd.NewStatsdClient("localhost:8125", "pogodex.")
@@ -124,8 +122,8 @@ func NewIndex() *index {
 	return index
 }
 
-func (i *index) Query(q Query) *big.Int {
-	return big.NewInt(0)
+func (i *index) Query(q Query) []*document {
+	return i.DocumentsByIds(q.Ids(i.words))
 }
 
 func (i *index) indexDocuments() {
@@ -136,6 +134,7 @@ func (i *index) indexDocuments() {
 		i.nextId++
 
 		doc := new(document)
+		doc.externalId = docContent.externalId
 		doc.id = id
 
 		Storage.dump(id, docContent.content)
@@ -158,9 +157,9 @@ func (i *index) indexDocuments() {
 
 func (i *index) tokenizeDocuments() {
 	for {
-		content := <-i.tokenizeQueue
-		tokens := tokenize(content)
-		i.indexQueue <- &documentContent{&tokens, content}
+		docContent := <-i.tokenizeQueue
+		docContent.tokens = tokenize(docContent.content)
+		i.indexQueue <- docContent
 	}
 }
 
@@ -192,9 +191,14 @@ func (i *index) newWord(str string) *word {
 	return w
 }
 
-func (i *index) AddDocument(content string) {
+func (i *index) AddDocument(externalId string, content string) {
 	i.indexWait.Add(1)
-	i.tokenizeQueue <- &content
+	docContent := documentContent{
+		externalId,
+		nil,
+		&content,
+	}
+	i.tokenizeQueue <- &docContent
 }
 
 func (i *index) Stats() {
@@ -225,14 +229,15 @@ func uniqueWords(words *[]string) []string {
 	return unique
 }
 
-func tokenize(content *string) []string {
+func tokenize(content *string) *[]string {
 	str := strings.ToLower(*content)
 	rex := regexp.MustCompile("[[:word:]-_]+")
 
 	matches := rex.FindAllStringSubmatch(str, -1)
 
 	if matches == nil {
-		return make([]string, 0)
+		var ret *[]string = new([]string)
+		return ret
 	}
 
 	tokens := make([]string, len(matches))
@@ -241,5 +246,5 @@ func tokenize(content *string) []string {
 		tokens[index] = token[0]
 	}
 
-	return tokens
+	return &tokens
 }

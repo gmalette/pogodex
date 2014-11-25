@@ -5,7 +5,7 @@ import (
 	"math/big"
 )
 
-func setup() WordMap {
+func setupWordMap() WordMap {
 	words := new(wordHashMap)
 	words.dict = make(map[string]*word)
 
@@ -24,7 +24,7 @@ func newWordQuery(str string) *wordQuery {
 }
 
 func TestWordQuery(t *testing.T) {
-	words := setup()
+	words := setupWordMap()
 
 	if str := newWordQuery("hello").Ids(words).String(); str != "1" {
 		t.Errorf("Expected results for 'hello' to be 1, got %s", str)
@@ -43,7 +43,7 @@ func newOrQuery(left Query, right Query) *orQuery {
 }
 
 func TestOrQuery(t *testing.T) {
-	words := setup()
+	words := setupWordMap()
 
 	helloQuery := newWordQuery("hello")
 	worldQuery := newWordQuery("world")
@@ -73,7 +73,7 @@ func newAndQuery(left Query, right Query) *andQuery {
 }
 
 func TestAndQuery(t *testing.T) {
-	words := setup()
+	words := setupWordMap()
 
 	helloQuery := newWordQuery("hello")
 	worldQuery := newWordQuery("world")

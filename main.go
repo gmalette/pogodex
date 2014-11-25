@@ -10,7 +10,7 @@ import (
 	"runtime"
 )
 
-var max = 50000
+var max = 5000
 var id = index.NewIndex()
 var count = 1
 
@@ -39,7 +39,7 @@ func indexDocument(path string) {
 	fileContent, _ := ioutil.ReadFile(path)
 	str := string(fileContent)
 
-	id.AddDocument(str)
+	id.AddDocument(path, str)
 }
 
 func seed() {
@@ -47,8 +47,8 @@ func seed() {
 	id.Stats()
 	q := index.BuildQuery("")
 	id.WaitForIndexing()
-	ids := id.Query(q)
-	id.DocumentsByIds(ids)
+	docs := id.Query(q)
+	fmt.Println(docs)
 }
 
 func withFile(path string, info os.FileInfo, err error) error {
