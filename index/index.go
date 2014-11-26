@@ -123,7 +123,7 @@ func NewIndex() *index {
 }
 
 func (i *index) Query(q Query) []*document {
-	return i.DocumentsByIds(q.Ids(i.words))
+	return i.DocumentsByIds(q.Ids(i))
 }
 
 func (i *index) indexDocuments() {

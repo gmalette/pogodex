@@ -5,16 +5,16 @@ import (
 )
 
 type Query interface {
-	Ids(WordMap) *big.Int
+	Ids(*index) *big.Int
 }
 
 type wordQuery struct {
 	word string
 }
 
-func (w *wordQuery) Ids(m WordMap) *big.Int {
+func (w *wordQuery) Ids(i *index) *big.Int {
 	ids := big.NewInt(0)
-	word, ok := m.Get(w.word)
+	word, ok := i.words.Get(w.word)
 
 	if !ok {
 		return ids
@@ -28,9 +28,9 @@ type orQuery struct {
 	right Query
 }
 
-func (q *orQuery) Ids(m WordMap) *big.Int {
+func (q *orQuery) Ids(i *index) *big.Int {
 	ids := big.NewInt(0)
-	ids.Or(q.left.Ids(m), q.right.Ids(m))
+	ids.Or(q.left.Ids(i), q.right.Ids(i))
 	return ids
 }
 
@@ -39,9 +39,9 @@ type andQuery struct {
 	left  Query
 }
 
-func (q *andQuery) Ids(m WordMap) *big.Int {
+func (q *andQuery) Ids(i *index) *big.Int {
 	ids := big.NewInt(0)
-	ids.And(q.left.Ids(m), q.right.Ids(m))
+	ids.And(q.left.Ids(i), q.right.Ids(i))
 	return ids
 }
 
@@ -49,10 +49,11 @@ type notQuery struct {
 	query Query
 }
 
-func (q *notQuery) Ids(m WordMap) *big.Int {
+func (q *notQuery) Ids(i *index) *big.Int {
 	ids := big.NewInt(0)
-	ids.SetBit(ids, int(m.Len()) + 1, 1)
+	ids.SetBit(ids, int(i.words.Len()) + 1, 1)
 	ids.Sub(ids, big.NewInt(1))
-	ids.AndNot(ids, q.query.Ids(m))
+	ids.AndNot(ids, q.query.Ids(i))
 	return ids
 }
+

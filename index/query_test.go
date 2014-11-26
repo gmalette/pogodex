@@ -5,7 +5,9 @@ import (
 	"math/big"
 )
 
-func setupWordMap() WordMap {
+func setupWordMap() *index {
+	i := new(index)
+
 	words := new(wordHashMap)
 	words.dict = make(map[string]*word)
 
@@ -14,7 +16,9 @@ func setupWordMap() WordMap {
 	words.Add(&word{"toto", big.NewInt(4)})
 	words.Add(&word{"all", big.NewInt(7)})
 
-	return words
+	i.words = words
+
+	return i
 }
 
 func newWordQuery(str string) *wordQuery {
@@ -24,13 +28,13 @@ func newWordQuery(str string) *wordQuery {
 }
 
 func TestWordQuery(t *testing.T) {
-	words := setupWordMap()
+	index := setupWordMap()
 
-	if str := newWordQuery("hello").Ids(words).String(); str != "1" {
+	if str := newWordQuery("hello").Ids(index).String(); str != "1" {
 		t.Errorf("Expected results for 'hello' to be 1, got %s", str)
 	}
 
-	if str := newWordQuery("world").Ids(words).String(); str != "2" {
+	if str := newWordQuery("world").Ids(index).String(); str != "2" {
 		t.Errorf("Expected results for 'world' to be 2, got %s", str)
 	}
 }
@@ -43,24 +47,24 @@ func newOrQuery(left Query, right Query) *orQuery {
 }
 
 func TestOrQuery(t *testing.T) {
-	words := setupWordMap()
+	index := setupWordMap()
 
 	helloQuery := newWordQuery("hello")
 	worldQuery := newWordQuery("world")
 	totoQuery := newWordQuery("toto")
 	allQuery := newWordQuery("all")
 
-	if str := newOrQuery(helloQuery, worldQuery).Ids(words).String(); str != "3" {
+	if str := newOrQuery(helloQuery, worldQuery).Ids(index).String(); str != "3" {
 		t.Errorf("Expected results for 'hello' or 'world' to be 3, got %s", str)
 	}
 
 	doubleOrQuery := newOrQuery(newOrQuery(helloQuery, worldQuery), totoQuery)
 
-	if str := doubleOrQuery.Ids(words).String(); str != "7" {
+	if str := doubleOrQuery.Ids(index).String(); str != "7" {
 		t.Errorf("Expected results for 'hello' or 'world' or 'toto' to be 7, got %s", str)
 	}
 
-	if str := newOrQuery(allQuery, helloQuery).Ids(words).String(); str != "7" {
+	if str := newOrQuery(allQuery, helloQuery).Ids(index).String(); str != "7" {
 		t.Errorf("Expected results for 'all' or 'hello' to be 7, got %s", str)
 	}
 }
@@ -73,7 +77,7 @@ func newAndQuery(left Query, right Query) *andQuery {
 }
 
 func TestAndQuery(t *testing.T) {
-	words := setupWordMap()
+	index := setupWordMap()
 
 	helloQuery := newWordQuery("hello")
 	worldQuery := newWordQuery("world")
@@ -82,11 +86,11 @@ func TestAndQuery(t *testing.T) {
 
 	noResultQuery := newAndQuery(helloQuery, worldQuery)
 
-	if str := noResultQuery.Ids(words).String(); str != "0" {
+	if str := noResultQuery.Ids(index).String(); str != "0" {
 		t.Errorf("Expected results for 'hello' and 'world' to be 0, got %s", str)
 	}
 
-	if str := newAndQuery(totoQuery, allQuery).Ids(words).String(); str != "4" {
+	if str := newAndQuery(totoQuery, allQuery).Ids(index).String(); str != "4" {
 		t.Errorf("Expected results for 'toto' and 'all' to be 4, got %s", str)
 	}
 }
