@@ -5,7 +5,7 @@ import (
 )
 
 func setupIndex() *index {
-	i := NewIndex()
+	i := NewIndex(new(NullStorage))
 	i.AddDocument("1", "titi toto tutu")
 	i.AddDocument("2", "hello world")
 	i.AddDocument("3", "hello toto")

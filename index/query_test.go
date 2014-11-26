@@ -6,7 +6,7 @@ import (
 )
 
 func setupWordMap() *index {
-	i := new(index)
+	i := NewIndex(new(NullStorage))
 
 	words := new(wordHashMap)
 	words.dict = make(map[string]*word)

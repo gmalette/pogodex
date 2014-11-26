@@ -14,7 +14,15 @@ type DocumentStorage interface {
 	dump(int32, *string) error
 }
 
-type nullStorage struct {
+type NullStorage struct {
+}
+
+func (n *NullStorage) load(id int32) (string, error) {
+	return "", nil
+}
+
+func (n *NullStorage) dump(id int32, str *string) error {
+	return nil
 }
 
 type WordMap interface {
@@ -45,16 +53,6 @@ func (w *wordHashMap) Get(key string) (*word, bool) {
 	word, ok := w.dict[key]
 	return word, ok
 }
-
-func (n *nullStorage) load(id int32) (string, error) {
-	return "", nil
-}
-
-func (n *nullStorage) dump(id int32, str *string) error {
-	return nil
-}
-
-var Storage DocumentStorage = new(nullStorage)
 
 type word struct {
 	word      string
@@ -89,6 +87,7 @@ type index struct {
 	indexQueue      chan *documentContent
 	indexWait       sync.WaitGroup
 	statsdClient    *statsd.StatsdClient
+	storage         DocumentStorage
 }
 
 func BuildQuery(query string) Query {
@@ -98,8 +97,9 @@ func BuildQuery(query string) Query {
 	return aq
 }
 
-func NewIndex() *index {
+func NewIndex(storage DocumentStorage) *index {
 	index := new(index)
+	index.storage = storage
 	index.words = NewWordHashMap()
 	index.stats = new(statistics)
 	index.nextId = 0
@@ -137,7 +137,7 @@ func (i *index) indexDocuments() {
 		doc.externalId = docContent.externalId
 		doc.id = id
 
-		Storage.dump(id, docContent.content)
+		i.storage.dump(id, docContent.content)
 
 		tokens := *docContent.tokens
 
