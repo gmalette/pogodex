@@ -7,21 +7,49 @@ import (
 	"strings"
 	"sync"
 	"github.com/quipo/statsd"
+	"errors"
 )
 
 type DocumentStorage interface {
-	load(int32) (string, error)
+	load(int32) (*string, error)
 	dump(int32, *string) error
 }
 
 type NullStorage struct {
 }
 
-func (n *NullStorage) load(id int32) (string, error) {
-	return "", nil
+func (n *NullStorage) load(id int32) (*string, error) {
+	s := ""
+	return &s, nil
 }
 
 func (n *NullStorage) dump(id int32, str *string) error {
+	return nil
+}
+
+type memStorage struct {
+	contents map[int32]*string
+}
+
+func NewMemStorage() *memStorage {
+	m := new(memStorage)
+	m.contents = make(map[int32]*string)
+	return m
+}
+
+func (m *memStorage) load(id int32) (*string, error) {
+	c, ok := m.contents[id]
+
+	if ok {
+		return c, nil
+	}
+
+	c = nil
+	return c, errors.New("404 not found")
+}
+
+func (m *memStorage) dump(id int32, str *string) error {
+	m.contents[id] = str
 	return nil
 }
 
@@ -172,9 +200,8 @@ func (i *index) DocumentsByIds(bitArray *big.Int) []*document {
 
 	for j := 0; j <= bitArray.BitLen(); j++ {
 		if bitArray.Bit(j) != 0 {
-			docs = docs[:len(docs)+1]
 			doc := i.documents[j]
-			docs[len(docs)-1] = doc
+			docs = append(docs, doc)
 		}
 	}
 

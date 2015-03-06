@@ -57,3 +57,25 @@ func (q *notQuery) Ids(i *index) *big.Int {
 	return ids
 }
 
+type exactQuery struct {
+	tokens []string
+}
+
+func (q *exactQuery) Ids(i *index) *big.Int {
+	andQuery := q.buildQuery(q.tokens)
+
+	superset := andQuery.Ids(i)
+	return superset
+}
+
+func (q *exactQuery) buildQuery(tokens []string) Query {
+	if len(tokens) == 0 {
+		return &wordQuery{tokens[0]}
+	}
+
+	aq := new(andQuery)
+	aq.left = &wordQuery{tokens[0]}
+	aq.right = q.buildQuery(tokens[1:len(tokens) - 1])
+
+	return aq
+}

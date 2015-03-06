@@ -10,8 +10,8 @@ import (
 	"runtime"
 )
 
-var max = 5000
-var id = index.NewIndex()
+var max = 50000
+var id = index.NewIndex(index.NewMemStorage())
 var count = 1
 
 func main() {
